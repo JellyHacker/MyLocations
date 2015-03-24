@@ -91,14 +91,28 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
                 if error.domain == kCLErrorDomain && error.code == CLError.Denied.rawValue {
                     statusMessage = "Location Services Disabled"
                 } else {
+                    // If the error code is something else then you simply say “Error Getting Location” as this usually means there was no way of obtaining a location fix.
                     statusMessage = "Error Getting Location"
                 }
-            } else if !CLLocationManager.locationServicesEnabled() { statusMessage = "Location Services Disabled"
-            } else if updatingLocation { statusMessage = "Searching..."
+            } else if !CLLocationManager.locationServicesEnabled() {
+                // Even if there was no error it might still be impossible to get location coordinates if the user disabled Location Services completely on her device (instead of just for this app). You check for that situation with the locationServicesEnabled() method of CLLocationManager.
+                statusMessage = "Location Services Disabled"
+            } else if updatingLocation {
+                statusMessage = "Searching..."
             } else {
                 statusMessage = "Tap 'Get My Location' to Start"
             }
             messageLabel.text = statusMessage
+        }
+    }
+    
+    func startLocationManager() {
+        
+        if CLLocationManager.locationServicesEnabled() {
+            locationManager.delegate = self
+        locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        locationManager.startUpdatingLocation()
+        updatingLocation = true
         }
     }
     
