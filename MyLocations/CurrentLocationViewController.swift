@@ -18,7 +18,6 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
     var updatingLocation = false
     var lastLocationError: NSError?
     
-    
     @IBOutlet weak var messageLabel: UILabel!
     @IBOutlet weak var latitudeLabel: UILabel!
     @IBOutlet weak var longitudeLabel: UILabel!
@@ -45,11 +44,13 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
         
         startLocationManager()
         updateLabels()
+        configureGetButton()
     }
     
     override func viewDidLoad() {
         super.viewDidLoad()
         updateLabels()
+        configureGetButton()
     }
 
     override func didReceiveMemoryWarning() {
@@ -148,9 +149,67 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
         let newLocation = locations.last as CLLocation
         println("didUpdateLocations \(newLocation)")
         
-        lastLocationError = nil
-        location = newLocation
-        updateLabels()
+            /*
+            If the time at which the location object was determined is too long ago (5 seconds in this case), then this is a so-called cached result.
+            Instead of returning a new location fix, the location manager may initially give you the most recently found location under the assumption that you might not have moved much since last time (obviously this does not take into consideration people with jet packs).
+            You’ll simply ignore these cached locations if they are too old.
+            */
+            if newLocation.timestamp.timeIntervalSinceNow < -5 {
+                return
+            }
+            
+            /*
+            To determine whether new readings are more accurate than previous ones you’re going to be using the horizontalAccuracy property of the location object. However, sometimes locations may have a horizontalAccuracy that is less than 0, in which case these measurements are invalid and you should ignore them.
+            */
+            if newLocation.horizontalAccuracy < 0 {
+                return
+            }
+            
+            /*
+            This is where you determine if the new reading is more useful than the previous one. Generally speaking, Core Location starts out with a fairly inaccurate reading and then gives you more and more accurate ones as time passes. However, there are no guarantees so you cannot assume that the next reading truly is always more accurate.
+            Note that a larger accuracy value means less accurate – after all, accurate up to 100 meters is worse than accurate up to 10 meters. That’s why you check whether the previous reading, location!.horizontalAccuracy, is greater than the new reading, newLocation.horizontalAccuracy.
+            You also check for location == nil. Recall that location is the optional instance variable that stores the CLLocation object that you obtained in a previous call to didUpdateLocations. If location is nil then this is the very first location update you’re receiving and in that case you should also continue.
+            So if this is the very first location reading (location is nil) or the new location is more accurate than the previous reading, you go on.
+            */
+            if location == nil || location!.horizontalAccuracy > newLocation.horizontalAccuracy {
+                
+                /*
+                You’ve seen this before. It clears out any previous error if there was one and stores the new location object into the location variable.
+                */
+                lastLocationError = nil
+                location = newLocation
+                updateLabels()
+            }
+            
+            /*
+            If the new location’s accuracy is equal to or better than the desired accuracy, you can call it a day and stop asking the location manager for updates. When you started the location manager in startLocationManager(), you set the desired accuracy to 10 meters (kCLLocationAccuracyNearestTenMeters), which is good enough for this app.
+            */
+            if newLocation.horizontalAccuracy <= locationManager.desiredAccuracy {
+                println("*** We're done!")
+                stopLocationManager()
+                    configureGetButton()
+            }
     }
+    
+    func configureGetButton() {
+        
+        if updatingLocation {
+            getButton.setTitle("Stop", forState: .Normal)
+        } else {
+            println("Before")
+            getButton.setTitle("Get My Location", forState: .Normal)
+        }
+    }
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
 }
 
