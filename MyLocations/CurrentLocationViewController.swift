@@ -18,6 +18,11 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
     var updatingLocation = false
     var lastLocationError: NSError?
     
+    let geocoder = CLGeocoder()
+    var placemark: CLPlacemark?
+    var performingReverseGeocoding = false
+    var lastGeocodingError: NSError?
+    
     @IBOutlet weak var messageLabel: UILabel!
     @IBOutlet weak var latitudeLabel: UILabel!
     @IBOutlet weak var longitudeLabel: UILabel!
@@ -42,7 +47,15 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
             return
         }
         
-        startLocationManager()
+        if updatingLocation {
+            stopLocationManager()
+        } else {
+            location = nil
+            lastLocationError = nil
+            placemark = nil
+            lastGeocodingError = nil
+            startLocationManager()
+        }
         updateLabels()
         configureGetButton()
     }
@@ -77,6 +90,17 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
             longitudeLabel.text = String(format: "%.8f", location.coordinate.longitude)
             tagButton.hidden = false
             messageLabel.text = ""
+            
+            // Because you only do the address lookup once the app has a location, this if/else block only needs to be inside the if and not the else.  If you’ve found an address, you show that to the user, otherwise you show a status message.
+            if let placemark = placemark {
+                addressLabel.text = stringFromPlacemark(placemark)
+            } else if performingReverseGeocoding {
+                addressLabel.text = "Searching for Address..."
+            } else if lastGeocodingError != nil {
+                addressLabel.text = "Error Finding Address"
+            } else {
+                addressLabel.text = "No Address Found"
+            }
         } else {
             latitudeLabel.text = ""
             longitudeLabel.text = ""
@@ -107,13 +131,25 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
         }
     }
     
+    func stringFromPlacemark(placemark: CLPlacemark) -> String {
+        
+        // subThoroughfare is the house number
+        // thoroughfare is the street name
+        // locality is the city
+        // administrativeArea is the state or province
+        // postalCode is the zip code or postal code.
+        return "\(placemark.subThoroughfare) \(placemark.thoroughfare)\n" +
+                "\(placemark.locality) \(placemark.administrativeArea) " +
+                "\(placemark.postalCode)"
+    }
+    
     func startLocationManager() {
         
         if CLLocationManager.locationServicesEnabled() {
             locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-        locationManager.startUpdatingLocation()
-        updatingLocation = true
+            locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+            locationManager.startUpdatingLocation()
+            updatingLocation = true
         }
     }
     
@@ -149,37 +185,37 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
         let newLocation = locations.last as CLLocation
         println("didUpdateLocations \(newLocation)")
         
-            /*
-            If the time at which the location object was determined is too long ago (5 seconds in this case), then this is a so-called cached result.
-            Instead of returning a new location fix, the location manager may initially give you the most recently found location under the assumption that you might not have moved much since last time (obviously this does not take into consideration people with jet packs).
-            You’ll simply ignore these cached locations if they are too old.
-            */
-            if newLocation.timestamp.timeIntervalSinceNow < -5 {
-                return
-            }
+        /*
+        If the time at which the location object was determined is too long ago (5 seconds in this case), then this is a so-called cached result.
+        Instead of returning a new location fix, the location manager may initially give you the most recently found location under the assumption that you might not have moved much since last time (obviously this does not take into consideration people with jet packs).
+        You’ll simply ignore these cached locations if they are too old.
+        */
+        if newLocation.timestamp.timeIntervalSinceNow < -5 {
+            return
+        }
             
-            /*
-            To determine whether new readings are more accurate than previous ones you’re going to be using the horizontalAccuracy property of the location object. However, sometimes locations may have a horizontalAccuracy that is less than 0, in which case these measurements are invalid and you should ignore them.
-            */
-            if newLocation.horizontalAccuracy < 0 {
-                return
-            }
+        /*
+        To determine whether new readings are more accurate than previous ones you’re going to be using the horizontalAccuracy property of the location object. However, sometimes locations may have a horizontalAccuracy that is less than 0, in which case these measurements are invalid and you should ignore them.
+        */
+        if newLocation.horizontalAccuracy < 0 {
+            return
+        }
             
-            /*
-            This is where you determine if the new reading is more useful than the previous one. Generally speaking, Core Location starts out with a fairly inaccurate reading and then gives you more and more accurate ones as time passes. However, there are no guarantees so you cannot assume that the next reading truly is always more accurate.
-            Note that a larger accuracy value means less accurate – after all, accurate up to 100 meters is worse than accurate up to 10 meters. That’s why you check whether the previous reading, location!.horizontalAccuracy, is greater than the new reading, newLocation.horizontalAccuracy.
-            You also check for location == nil. Recall that location is the optional instance variable that stores the CLLocation object that you obtained in a previous call to didUpdateLocations. If location is nil then this is the very first location update you’re receiving and in that case you should also continue.
-            So if this is the very first location reading (location is nil) or the new location is more accurate than the previous reading, you go on.
-            */
-            if location == nil || location!.horizontalAccuracy > newLocation.horizontalAccuracy {
+        /*
+        This is where you determine if the new reading is more useful than the previous one. Generally speaking, Core Location starts out with a fairly inaccurate reading and then gives you more and more accurate ones as time passes. However, there are no guarantees so you cannot assume that the next reading truly is always more accurate.
+        Note that a larger accuracy value means less accurate – after all, accurate up to 100 meters is worse than accurate up to 10 meters. That’s why you check whether the previous reading, location!.horizontalAccuracy, is greater than the new reading, newLocation.horizontalAccuracy.
+        You also check for location == nil. Recall that location is the optional instance variable that stores the CLLocation object that you obtained in a previous call to didUpdateLocations. If location is nil then this is the very first location update you’re receiving and in that case you should also continue.
+        So if this is the very first location reading (location is nil) or the new location is more accurate than the previous reading, you go on.
+        */
+        if location == nil || location!.horizontalAccuracy > newLocation.horizontalAccuracy {
                 
-                /*
-                You’ve seen this before. It clears out any previous error if there was one and stores the new location object into the location variable.
-                */
-                lastLocationError = nil
-                location = newLocation
-                updateLabels()
-            }
+            /*
+            You’ve seen this before. It clears out any previous error if there was one and stores the new location object into thelocation variable.
+            */
+            lastLocationError = nil
+            location = newLocation
+            updateLabels()
+        
             
             /*
             If the new location’s accuracy is equal to or better than the desired accuracy, you can call it a day and stop asking the location manager for updates. When you started the location manager in startLocationManager(), you set the desired accuracy to 10 meters (kCLLocationAccuracyNearestTenMeters), which is good enough for this app.
@@ -187,8 +223,31 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
             if newLocation.horizontalAccuracy <= locationManager.desiredAccuracy {
                 println("*** We're done!")
                 stopLocationManager()
-                    configureGetButton()
+                configureGetButton()
             }
+            // The app should only perform a single reverse geocoding request at a time, so first you check whether it is not busy yet by looking at the performingReverseGeocoding variable. Then you start the geocoder.
+            if !performingReverseGeocoding {
+                println("*** Going to Geocode")
+                performingReverseGeocoding = true
+                
+                // When the geocoder finds a result for the location object that you gave it, it invokes the closure and executes the statements within. The placemarks parameter will contain an array of CLPlacemark objects that describe the address information, and the error variable contains an error message in case something went wrong.
+                geocoder.reverseGeocodeLocation(location, completionHandler: {
+                    placemarks, error in
+                    println("*** Found placemarks: \(placemarks), error: \(error)")
+                    self.lastGeocodingError = error
+                    
+                    if error == nil {
+                        self.placemark = placemarks.last as? CLPlacemark
+                    } else {
+                        // If an error occurred during Geocoding.  You don’t want to show an old address, only the address that corresponds to the current location or no address at all.
+                        self.placemark = nil
+                    }
+                    
+                    self.performingReverseGeocoding = false
+                    self.updateLabels()
+                })
+            }
+        }
     }
     
     func configureGetButton() {
@@ -196,7 +255,6 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
         if updatingLocation {
             getButton.setTitle("Stop", forState: .Normal)
         } else {
-            println("Before")
             getButton.setTitle("Get My Location", forState: .Normal)
         }
     }
