@@ -200,7 +200,13 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
         if newLocation.horizontalAccuracy < 0 {
             return
         }
-            
+        
+        // This calculates the distance between the new reading and the previous reading, if there was one.  If there was no previous reading, then the distance is DBL_MAX. That is a built-in constant that represents the maximum value that a floating-point number can have.  This guarantees that other distance calculations will work even if a true distance wasn't able to be calculated yet.
+        var distance = CLLocationDistance(DBL_MAX)
+        if let location = location {
+            distance = newLocation.distanceFromLocation(location)
+        }
+        
         /*
         This is where you determine if the new reading is more useful than the previous one. Generally speaking, Core Location starts out with a fairly inaccurate reading and then gives you more and more accurate ones as time passes. However, there are no guarantees so you cannot assume that the next reading truly is always more accurate.
         Note that a larger accuracy value means less accurate – after all, accurate up to 100 meters is worse than accurate up to 10 meters. That’s why you check whether the previous reading, location!.horizontalAccuracy, is greater than the new reading, newLocation.horizontalAccuracy.
@@ -224,6 +230,10 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
                 println("*** We're done!")
                 stopLocationManager()
                 configureGetButton()
+                // This forces a reverse geocoding for the final location, even if the app is already currently performing another geocoding request.
+                if distance > 0 {
+                    performingReverseGeocoding = false
+                }
             }
             // The app should only perform a single reverse geocoding request at a time, so first you check whether it is not busy yet by looking at the performingReverseGeocoding variable. Then you start the geocoder.
             if !performingReverseGeocoding {
@@ -246,6 +256,16 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
                     self.performingReverseGeocoding = false
                     self.updateLabels()
                 })
+            } else if distance < 1.0 {
+                // If the coordinate from this reading is not significantly different from the previous reading and it has been more than 10 seconds since you’ve received that original reading, then it’s a good point to hang up your hat and stop.
+                let timeInterval = newLocation.timestamp.timeIntervalSinceDate(location!.timestamp)
+                
+                if timeInterval > 10 {
+                    println("*** Force done!")
+                    stopLocationManager()
+                    updateLabels()
+                    configureGetButton()
+                }
             }
         }
     }
