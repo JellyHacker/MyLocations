@@ -23,6 +23,8 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
     var performingReverseGeocoding = false
     var lastGeocodingError: NSError?
     
+    var timer: NSTimer?
+    
     @IBOutlet weak var messageLabel: UILabel!
     @IBOutlet weak var latitudeLabel: UILabel!
     @IBOutlet weak var longitudeLabel: UILabel!
@@ -150,15 +152,39 @@ class CurrentLocationViewController: UIViewController, CLLocationManagerDelegate
             locationManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
             locationManager.startUpdatingLocation()
             updatingLocation = true
+            
+            // This sets up a timer object that sends the “didTimeOut” message to self after 60 seconds; didTimeOut is a method that needs to be implemented.
+            timer = NSTimer.scheduledTimerWithTimeInterval(60, target: self, selector: Selector("didTimeOut"), userInfo: nil, repeats: false)
         }
     }
     
     func stopLocationManager() {
         
         if updatingLocation {
+            
+            // You have to cancel the timer in case the location manager is stopped before the time-out fires. This happens when an accurate enough location is found within one minute after starting, or when the user tapped the Stop button.
+            if let timer = timer {
+                timer.invalidate()
+            }
             locationManager.stopUpdatingLocation()
             locationManager.delegate = nil
             updatingLocation = false
+        }
+    }
+    
+    func didTimeOut() {
+        
+        // didTimeOut() is always called after one minute, whether you’ve obtained a valid location or not (unless stopLocationManager() cancels the timer first).  If after that one minute there still is no valid location, you stop the location manager, create your own error code, and update the screen.
+        println("*** Time out")
+        
+        if location == nil {
+            stopLocationManager()
+            
+            // An error domain is simply a string, so "MyLocationsErrorDomain" will do. For the code I picked 1. The value of code doesn’t really matter at this point because you only have one custom error, but you can imagine that when the app becomes bigger you’d have the need for multiple error codes.
+            lastLocationError = NSError(domain: "MyLocationsErrorDomain", code: 1, userInfo: nil)
+            
+            updateLabels()
+            configureGetButton()
         }
     }
 
